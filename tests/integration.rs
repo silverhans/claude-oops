@@ -137,6 +137,148 @@ fn drop_removes_snapshot_and_ref() {
 }
 
 #[test]
+fn install_then_uninstall_round_trip() {
+    use std::process::Command;
+
+    let dir = tempfile::tempdir().unwrap();
+    let settings = dir.path().join("settings.json");
+    // Pre-existing user content we must NOT touch.
+    std::fs::write(
+        &settings,
+        r#"{"permissions": {"allow": ["bash"]}, "hooks": {"PreToolUse": [
+          {"matcher": "Read", "hooks": [{"type": "command", "command": "echo user-hook"}]}
+        ]}}"#,
+    )
+    .unwrap();
+
+    let bin = helpers::bin_path();
+
+    let out = Command::new(&bin)
+        .arg("install")
+        .env("CLAUDE_OOPS_SETTINGS", &settings)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "install failed: {:?}", out);
+
+    let after_install: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    // User's permission block survives.
+    assert_eq!(after_install["permissions"]["allow"][0], "bash");
+    // User's pre-existing PreToolUse hook survives.
+    let pre = after_install["hooks"]["PreToolUse"].as_array().unwrap();
+    assert!(
+        pre.iter().any(|e| e["matcher"] == "Read"),
+        "user hook lost: {pre:?}"
+    );
+    // Our two hooks are present.
+    assert!(after_install["hooks"]["SessionStart"].is_array());
+    assert!(pre.iter().any(|e| e["matcher"] == "Edit|Write|Bash"));
+
+    let out = Command::new(&bin)
+        .arg("uninstall")
+        .env("CLAUDE_OOPS_SETTINGS", &settings)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let after_uninstall: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    // User's stuff still here.
+    assert_eq!(after_uninstall["permissions"]["allow"][0], "bash");
+    let pre = after_uninstall["hooks"]["PreToolUse"].as_array().unwrap();
+    assert!(pre.iter().any(|e| e["matcher"] == "Read"));
+    // Our entry is gone.
+    assert!(!pre.iter().any(|e| e["matcher"] == "Edit|Write|Bash"));
+}
+
+#[test]
+fn install_is_idempotent() {
+    use std::process::Command;
+    let dir = tempfile::tempdir().unwrap();
+    let settings = dir.path().join("settings.json");
+    let bin = helpers::bin_path();
+
+    for _ in 0..3 {
+        let out = Command::new(&bin)
+            .arg("install")
+            .env("CLAUDE_OOPS_SETTINGS", &settings)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+    }
+
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    assert_eq!(v["hooks"]["SessionStart"].as_array().unwrap().len(), 1);
+    assert_eq!(v["hooks"]["PreToolUse"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn pre_tool_use_hook_snapshots_on_dangerous_bash() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let repo = TempRepo::new();
+    repo.write("data.txt", "important\n");
+
+    let payload = serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": {"command": "rm -rf data.txt"},
+        "cwd": repo.path().to_string_lossy(),
+    });
+    let mut child = Command::new(helpers::bin_path())
+        .arg("_hook-pre-tool-use")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(payload.to_string().as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success());
+
+    let (json_out, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&json_out).unwrap();
+    let arr = v.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "expected 1 snapshot, got {arr:?}");
+    assert_eq!(arr[0]["trigger"], "pre-bash");
+}
+
+#[test]
+fn pre_tool_use_hook_skips_safe_bash() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let repo = TempRepo::new();
+    let payload = serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": {"command": "ls -la"},
+        "cwd": repo.path().to_string_lossy(),
+    });
+    let mut child = Command::new(helpers::bin_path())
+        .arg("_hook-pre-tool-use")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(payload.to_string().as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success());
+    let (json_out, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&json_out).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 0);
+}
+
+#[test]
 fn outside_git_repo_errors_clearly() {
     let dir = tempfile::tempdir().unwrap();
     let (_, stderr, code) = run_oops(dir.path(), &["snap"]);

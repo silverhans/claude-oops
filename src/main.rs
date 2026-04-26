@@ -3,6 +3,7 @@
 mod cli;
 mod format;
 mod git;
+mod hooks;
 mod snapshot;
 mod storage;
 
@@ -117,15 +118,23 @@ fn run() -> Result<()> {
         }
 
         Cmd::Clean => Err(anyhow!("clean: not implemented yet (Step 5)")),
-        Cmd::Install => Err(anyhow!("install: not implemented yet (Step 3)")),
-        Cmd::Uninstall => Err(anyhow!("uninstall: not implemented yet (Step 3)")),
+        Cmd::Install => {
+            let path = hooks::install()?;
+            println!("installed hooks → {}", path.display());
+            Ok(())
+        }
+        Cmd::Uninstall => {
+            let path = hooks::uninstall()?;
+            println!("removed claude-oops hooks from {}", path.display());
+            Ok(())
+        }
         Cmd::Status => {
             let repo = GitRepo::discover(&cwd)?;
             let recs = storage::read_all(&repo)?;
             println!("{}", format::status_summary(&recs));
             Ok(())
         }
-        Cmd::HookPreToolUse => Err(anyhow!("_hook-pre-tool-use: not implemented yet (Step 3)")),
+        Cmd::HookPreToolUse => hooks::run_pre_tool_use_hook(),
     }
 }
 
