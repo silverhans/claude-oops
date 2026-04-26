@@ -117,7 +117,7 @@ There is no config file. The defaults are:
 ## Building from source
 
 ```bash
-git clone https://github.com/<user>/claude-oops
+git clone https://github.com/silverhans/claude-oops
 cd claude-oops
 cargo install --path .
 ```
@@ -145,7 +145,7 @@ MIT.
 > on every Edit/Write/dangerous Bash gets snapshotted. `claude-oops list`
 > shows them; `claude-oops to <id>` restores.
 >
-> Source: <https://github.com/USER/claude-oops>. Built in Rust, single
+> Source: <https://github.com/silverhans/claude-oops>. Built in Rust, single
 > binary, ~1 MB. Storage is git refs, so it's local, free, and survives
 > reboots.
 >
