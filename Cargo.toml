@@ -1,0 +1,33 @@
+[package]
+name = "claude-oops"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Automatic safety net for Claude Code: snapshot before risky ops, restore in seconds."
+license = "MIT"
+repository = "https://github.com/hans/claude-oops"
+homepage = "https://github.com/hans/claude-oops"
+readme = "README.md"
+keywords = ["claude", "claude-code", "snapshot", "git", "undo"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "claude-oops"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+clap = { version = "4", features = ["derive"] }
+colored = "2"
+comfy-table = "7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
