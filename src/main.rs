@@ -4,10 +4,11 @@ mod cli;
 mod format;
 mod git;
 mod hooks;
+mod retention;
 mod snapshot;
 mod storage;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use clap::Parser;
 use std::io::Write;
 
@@ -117,7 +118,16 @@ fn run() -> Result<()> {
             Ok(())
         }
 
-        Cmd::Clean => Err(anyhow!("clean: not implemented yet (Step 5)")),
+        Cmd::Clean => {
+            let repo = GitRepo::discover(&cwd)?;
+            let report = retention::clean(&repo)?;
+            println!(
+                "kept {} snapshots, deleted {}",
+                report.kept,
+                report.deleted.len()
+            );
+            Ok(())
+        }
         Cmd::Install => {
             let path = hooks::install()?;
             println!("installed hooks → {}", path.display());
@@ -131,7 +141,12 @@ fn run() -> Result<()> {
         Cmd::Status => {
             let repo = GitRepo::discover(&cwd)?;
             let recs = storage::read_all(&repo)?;
-            println!("{}", format::status_summary(&recs));
+            let index_bytes = storage::index_path(&repo)
+                .ok()
+                .and_then(|p| std::fs::metadata(p).ok())
+                .map(|m| m.len())
+                .unwrap_or(0);
+            println!("{}", format::status_summary(&recs, index_bytes));
             Ok(())
         }
         Cmd::HookPreToolUse => hooks::run_pre_tool_use_hook(),

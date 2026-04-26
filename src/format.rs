@@ -1,6 +1,7 @@
 //! Output formatting helpers.
 
 use chrono::{DateTime, Utc};
+use colored::{ColoredString, Colorize};
 use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, ContentArrangement, Table};
 
 use crate::storage::SnapshotRecord;
@@ -51,6 +52,17 @@ fn files_cell(rec: &SnapshotRecord) -> String {
     }
 }
 
+/// Colorize a trigger label so urgent ones (`pre-bash`) stand out.
+fn colored_trigger(trigger: &str) -> ColoredString {
+    match trigger {
+        "pre-bash" => trigger.red().bold(),
+        "pre-edit" => trigger.yellow(),
+        "manual" => trigger.cyan(),
+        "session-start" => trigger.blue(),
+        _ => trigger.normal(),
+    }
+}
+
 /// Render the snapshot list as a table.
 pub fn list_table(records: &[SnapshotRecord]) -> String {
     let mut table = Table::new();
@@ -61,9 +73,9 @@ pub fn list_table(records: &[SnapshotRecord]) -> String {
     for rec in records.iter().rev() {
         let msg = rec.message.as_deref().unwrap_or("");
         table.add_row(vec![
-            Cell::new(&rec.id),
-            Cell::new(relative_age(rec.timestamp)),
-            Cell::new(&rec.trigger),
+            Cell::new(rec.id.bold()),
+            Cell::new(relative_age(rec.timestamp).dimmed()),
+            Cell::new(colored_trigger(&rec.trigger)),
             Cell::new(files_cell(rec)),
             Cell::new(truncate(msg, 60)),
         ]);
@@ -72,18 +84,38 @@ pub fn list_table(records: &[SnapshotRecord]) -> String {
 }
 
 /// One-shot status summary for the `status` subcommand.
-pub fn status_summary(records: &[SnapshotRecord]) -> String {
+pub fn status_summary(records: &[SnapshotRecord], index_bytes: u64) -> String {
     let count = records.len();
     let last = records
         .last()
         .map(|r| {
             format!(
                 "{}  {}  {}",
-                r.id,
-                relative_age(r.timestamp),
-                r.message.as_deref().unwrap_or(&r.trigger)
+                r.id.bold(),
+                relative_age(r.timestamp).dimmed(),
+                r.message.as_deref().unwrap_or(&r.trigger),
             )
         })
-        .unwrap_or_else(|| "(none)".to_string());
-    format!("snapshots: {}\nlatest:    {}", count, last)
+        .unwrap_or_else(|| "(none)".dimmed().to_string());
+    format!(
+        "{}: {}\n{}: {}\n{}: {}",
+        "snapshots".bold(),
+        count,
+        "latest".bold(),
+        last,
+        "index size".bold(),
+        format_bytes(index_bytes),
+    )
+}
+
+fn format_bytes(n: u64) -> String {
+    const K: f64 = 1024.0;
+    let n = n as f64;
+    if n < K {
+        format!("{} B", n as u64)
+    } else if n < K * K {
+        format!("{:.1} KiB", n / K)
+    } else {
+        format!("{:.1} MiB", n / (K * K))
+    }
 }
