@@ -154,6 +154,18 @@ pub fn diff(repo: &GitRepo, rec: &SnapshotRecord) -> Result<()> {
     Ok(())
 }
 
+/// Per-file summary of what `to <id>` would change.
+///
+/// Returns `(letter, path)` pairs where the letter follows
+/// `git diff --name-status` conventions (`A`, `M`, `D`, `R`, …). The
+/// comparison is from the *current working tree* to the snapshot — i.e.
+/// these are the files that would change back to the snapshot's version
+/// if you ran `claude-oops to <id>`.
+pub fn show_files(repo: &GitRepo, rec: &SnapshotRecord) -> Result<Vec<(char, String)>> {
+    let current_tree = repo.capture_tree()?;
+    repo.name_status(&current_tree, &rec.tree_sha)
+}
+
 /// Delete the snapshot ref + remove from the index.
 pub fn drop(repo: &GitRepo, id: &str) -> Result<SnapshotRecord> {
     let mut all = storage::read_all(repo)?;

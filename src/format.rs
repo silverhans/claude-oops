@@ -52,6 +52,38 @@ fn files_cell(rec: &SnapshotRecord) -> String {
     }
 }
 
+/// Render the per-file change list from `show <id>`.
+///
+/// Each line is `<colored letter>  <path>`. Colors echo `git status`:
+/// green for additions, red for deletions, yellow for modifications.
+pub fn show_files_block(rows: &[(char, String)]) -> String {
+    if rows.is_empty() {
+        return "no changes — working tree matches snapshot"
+            .dimmed()
+            .to_string();
+    }
+    let mut s = String::new();
+    s.push_str(
+        &"if you restore this snapshot, these paths will change back:"
+            .dimmed()
+            .to_string(),
+    );
+    s.push('\n');
+    for (status, path) in rows {
+        let (letter, colored): (char, ColoredString) = match status {
+            'A' => ('A', "A".green().bold()),
+            'D' => ('D', "D".red().bold()),
+            'M' => ('M', "M".yellow().bold()),
+            'R' => ('R', "R".magenta().bold()),
+            'C' => ('C', "C".cyan().bold()),
+            other => (*other, other.to_string().normal()),
+        };
+        let _ = letter; // pattern lets us return both — just for clarity
+        s.push_str(&format!("  {}  {}\n", colored, path));
+    }
+    s.trim_end().to_string()
+}
+
 /// Colorize a trigger label so urgent ones (`pre-bash`) stand out.
 fn colored_trigger(trigger: &str) -> ColoredString {
     match trigger {

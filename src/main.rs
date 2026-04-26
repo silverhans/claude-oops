@@ -92,6 +92,15 @@ fn run() -> Result<()> {
             snapshot::diff(&repo, &rec)
         }
 
+        Cmd::Show { id } => {
+            let repo = GitRepo::discover(&cwd)?;
+            let recs = storage::read_all(&repo)?;
+            let rec = storage::find_by_id(&recs, &id)?.clone();
+            let rows = snapshot::show_files(&repo, &rec)?;
+            println!("{}", format::show_files_block(&rows));
+            Ok(())
+        }
+
         Cmd::To { id, force } => {
             let repo = GitRepo::discover(&cwd)?;
             let recs = storage::read_all(&repo)?;
@@ -129,13 +138,18 @@ fn run() -> Result<()> {
             Ok(())
         }
         Cmd::Install => {
-            let path = hooks::install()?;
-            println!("installed hooks → {}", path.display());
+            let report = hooks::install()?;
+            println!("hooks       → {}", report.settings.display());
+            println!("/oops cmd   → {}", report.slash_command.display());
             Ok(())
         }
         Cmd::Uninstall => {
-            let path = hooks::uninstall()?;
-            println!("removed claude-oops hooks from {}", path.display());
+            let report = hooks::uninstall()?;
+            println!("hooks removed from {}", report.settings.display());
+            match report.removed_slash_command {
+                Some(p) => println!("/oops cmd removed: {}", p.display()),
+                None => println!("/oops cmd: not removed (missing or user-modified)"),
+            }
             Ok(())
         }
         Cmd::Status => {

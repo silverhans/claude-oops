@@ -22,6 +22,10 @@ impl TempRepo {
         run(p, &["git", "init", "-q", "-b", "main"]);
         run(p, &["git", "config", "user.email", "test@example.com"]);
         run(p, &["git", "config", "user.name", "Test"]);
+        // Keep test fixtures byte-identical across platforms — git on
+        // Windows otherwise normalizes \n ↔ \r\n on checkout/commit,
+        // breaking exact-bytes comparisons in restore tests.
+        run(p, &["git", "config", "core.autocrlf", "false"]);
         // Need at least one commit for HEAD to resolve.
         std::fs::write(p.join("README.md"), "hello\n").unwrap();
         run(p, &["git", "add", "."]);

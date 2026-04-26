@@ -45,6 +45,12 @@ pub enum Cmd {
         id: String,
     },
 
+    /// Show the file-level summary of a snapshot (which files changed).
+    Show {
+        /// Snapshot id (or unambiguous prefix).
+        id: String,
+    },
+
     /// Restore the working tree to a snapshot.
     To {
         /// Snapshot id (or unambiguous prefix).

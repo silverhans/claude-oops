@@ -56,10 +56,15 @@ claude-oops snap -m "before refactor"
 
 ```bash
 claude-oops list                 # see what you have
-claude-oops diff abc123f         # what changed since the snapshot
+claude-oops show abc123f         # which files would change on restore
+claude-oops diff abc123f         # full diff vs the snapshot
 claude-oops to abc123f           # restore (asks for confirmation)
 claude-oops to abc123f --force   # skip the confirmation prompt
 ```
+
+Inside a Claude Code session, type `/oops` instead — the slash command
+runs `claude-oops list` and helps you pick a snapshot to restore without
+switching to a terminal.
 
 `to` updates the working tree only — your HEAD and commit history stay put.
 The snapshot itself isn't consumed; you can restore again, or jump to a
@@ -71,12 +76,13 @@ different one.
 | --- | --- |
 | `snap [-m MSG]`  | Take a manual snapshot (no idempotency check). |
 | `list [--json] [--limit N]` | List snapshots in this repo. |
-| `diff <id>`      | Diff working tree vs snapshot. |
+| `show <id>`      | List the files that would change on restore. |
+| `diff <id>`      | Full diff between working tree and snapshot. |
 | `to <id> [-f]`   | Restore working tree to snapshot. |
 | `drop <id>`      | Delete a snapshot ref + remove from index. |
 | `clean`          | Apply retention: keep last 30 OR < 7 days old. |
-| `install`        | Add hooks to `~/.claude/settings.json`. |
-| `uninstall`      | Remove only the hooks we installed. |
+| `install`        | Add hooks to `~/.claude/settings.json` and ship `/oops`. |
+| `uninstall`      | Remove the hooks and `/oops` we installed. |
 | `status`         | Snapshot count, latest, index size. |
 
 ## How it works

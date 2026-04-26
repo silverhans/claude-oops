@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.2.0
+
+- New `claude-oops show <id>` — file-level summary of what `to <id>` would
+  change. Color-coded `A`/`M`/`D` like `git status`.
+- `claude-oops install` now also writes a `/oops` slash command to
+  `~/.claude/commands/oops.md` so you can list and restore snapshots
+  without leaving your Claude Code session.
+- `_hook-pre-tool-use` now writes a one-line announcement to stderr each
+  time it takes a snapshot, so users can see hooks firing.
+- Hook auto-snapshots now record a useful default message (file path for
+  Edit/Write, command for Bash) instead of `null`.
+- `uninstall` removes the `/oops` slash command unless the user edited it.
+- Test fixtures pin `core.autocrlf=false`; fixes Windows CI flake.
+
 ## v0.1.0
 
 - `snap`, `list`, `diff`, `to`, `drop`, `clean`, `install`, `uninstall`,

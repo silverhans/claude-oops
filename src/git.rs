@@ -217,6 +217,41 @@ impl GitRepo {
             .unwrap_or(false)
     }
 
+    /// Per-file change summary between two trees:
+    /// `Vec<(status_letter, path)>` where status is `A`/`M`/`D`/`R`/etc.
+    pub fn name_status(&self, from: &str, to: &str) -> Result<Vec<(char, String)>> {
+        let out = self
+            .git()
+            .args([
+                "diff-tree",
+                "-r",
+                "--no-commit-id",
+                "--name-status",
+                from,
+                to,
+            ])
+            .output()
+            .context("git diff-tree failed")?;
+        if !out.status.success() {
+            return Err(anyhow!(
+                "git diff-tree failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        let mut rows = Vec::new();
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let mut parts = line.splitn(2, '\t');
+            let status = parts.next().unwrap_or("");
+            let path = parts.next().unwrap_or("");
+            if path.is_empty() {
+                continue;
+            }
+            let letter = status.chars().next().unwrap_or('?');
+            rows.push((letter, path.to_string()));
+        }
+        Ok(rows)
+    }
+
     /// Count of (added, deleted) lines for `commit` against its first parent
     /// (or against the empty tree if it has none). Used for list output.
     pub fn diff_stats(&self, commit: &str) -> Result<(u32, u32)> {
