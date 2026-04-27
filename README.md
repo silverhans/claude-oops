@@ -31,6 +31,35 @@ helps if Claude already committed. `claude-oops` snapshots *the entire
 working tree* — tracked plus untracked, respecting `.gitignore` — at the
 moments where things tend to go wrong.
 
+## "If I need git anyway, why not just use git directly?"
+
+Fair question. claude-oops isn't a storage tool — it's an *automation layer*
+on top of git. Storage is git, and that's a feature: free, deduplicated by
+the object store, no extra dependency to install. The value is in three
+things bare git won't do for you:
+
+1. **Capture untracked files without disturbing the working tree.**
+   `git stash` (default) ignores untracked. `git stash -u` captures them but
+   resets the working tree — that's not what you want a background tool to
+   do silently. claude-oops builds a private temp index and writes a tree
+   from it, leaving your real index alone.
+2. **Snapshot at the right moments, automatically.** With bare git you'd have
+   to remember to `git stash` before every risky operation. Nobody does that.
+   claude-oops hooks into Claude Code's `SessionStart` and `PreToolUse` events
+   and snapshots before `Edit`/`Write` and before any `Bash` command matching
+   a curated dangerous-pattern list — with idempotency + cooldown so it
+   doesn't spam.
+3. **Restore in two commands without spelunking the reflog.** `claude-oops list`
+   gives you a labelled, time-sorted table (with the triggering command);
+   `claude-oops to <id>` (or per-file: `to <id> -- src/auth.rs`) puts things
+   back. The bare-git equivalent is some combination of `git reflog` +
+   `git stash list` + `git checkout-index` + tree-ish syntax — workable when
+   you're calm, less so when you've just realized half your repo is gone.
+
+Requiring git isn't really a requirement: git is on every dev machine, and
+`git init` takes a second. The point of claude-oops is that storage is the
+boring part — automation and ergonomics around it are the actual product.
+
 ## Install
 
 ```bash
