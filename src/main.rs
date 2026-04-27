@@ -33,7 +33,17 @@ fn run() -> Result<()> {
             trigger,
             quiet,
         } => {
-            let repo = GitRepo::discover(&cwd)?;
+            // SessionStart hook fires `snap --quiet`; outside a git repo
+            // we should exit silently rather than failing the hook.
+            let repo = match GitRepo::discover(&cwd) {
+                Ok(r) => r,
+                Err(e) => {
+                    if !quiet {
+                        return Err(e);
+                    }
+                    return Ok(());
+                }
+            };
             let outcome = snapshot::snap(
                 &repo,
                 SnapOpts {
@@ -67,7 +77,23 @@ fn run() -> Result<()> {
         }
 
         Cmd::List { json, limit } => {
-            let repo = GitRepo::discover(&cwd)?;
+            // `list` is a read-only query — outside a git repo, just say so
+            // and exit 0, so that integrations like the /oops slash command
+            // don't blow up in non-git projects.
+            let repo = match GitRepo::discover(&cwd) {
+                Ok(r) => r,
+                Err(_) => {
+                    if json {
+                        println!("[]");
+                    } else {
+                        println!(
+                            "no snapshots — this directory is not a git repository \
+                             (run `git init` to enable claude-oops)"
+                        );
+                    }
+                    return Ok(());
+                }
+            };
             let mut recs = storage::read_all(&repo)?;
             if let Some(n) = limit {
                 if recs.len() > n {
@@ -182,7 +208,16 @@ fn run() -> Result<()> {
             Ok(())
         }
         Cmd::Status => {
-            let repo = GitRepo::discover(&cwd)?;
+            let repo = match GitRepo::discover(&cwd) {
+                Ok(r) => r,
+                Err(_) => {
+                    println!(
+                        "not a git repository — claude-oops is dormant here \
+                         (run `git init` to enable it)"
+                    );
+                    return Ok(());
+                }
+            };
             let recs = storage::read_all(&repo)?;
             let index_bytes = storage::index_path(&repo)
                 .ok()

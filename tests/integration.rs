@@ -586,12 +586,50 @@ fn per_file_restore_rejects_paths_outside_repo() {
 }
 
 #[test]
-fn outside_git_repo_errors_clearly() {
+fn outside_git_repo_snap_errors_clearly() {
     let dir = tempfile::tempdir().unwrap();
     let (_, stderr, code) = run_oops(dir.path(), &["snap"]);
     assert_ne!(code, 0);
     assert!(
         stderr.to_lowercase().contains("git"),
         "error should mention git: {stderr}"
+    );
+}
+
+#[test]
+fn outside_git_repo_quiet_snap_exits_zero() {
+    // The SessionStart hook calls `snap --quiet` — that must not fail in
+    // non-git projects, otherwise the hook blows up everywhere.
+    let dir = tempfile::tempdir().unwrap();
+    let (_, _, code) = run_oops(
+        dir.path(),
+        &["snap", "--quiet", "--trigger", "session-start"],
+    );
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn outside_git_repo_list_says_so_and_exits_zero() {
+    let dir = tempfile::tempdir().unwrap();
+    let (out, _, code) = run_oops(dir.path(), &["list"]);
+    assert_eq!(code, 0);
+    assert!(
+        out.to_lowercase().contains("not a git repository") || out.contains("git init"),
+        "expected helpful message, got: {out}"
+    );
+    // JSON variant: empty array + exit 0, so callers can pipe through jq safely.
+    let (json_out, _, json_code) = run_oops(dir.path(), &["list", "--json"]);
+    assert_eq!(json_code, 0);
+    assert_eq!(json_out.trim(), "[]");
+}
+
+#[test]
+fn outside_git_repo_status_says_so_and_exits_zero() {
+    let dir = tempfile::tempdir().unwrap();
+    let (out, _, code) = run_oops(dir.path(), &["status"]);
+    assert_eq!(code, 0);
+    assert!(
+        out.to_lowercase().contains("not a git repository") || out.contains("git init"),
+        "expected helpful message, got: {out}"
     );
 }

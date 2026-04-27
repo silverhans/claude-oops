@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.3
+
+- `claude-oops list` and `status` no longer fail when run outside a git
+  repository — they print a friendly note and exit 0. This was making
+  the `/oops` slash command blow up in any non-git project.
+- `claude-oops snap --quiet` (used by the SessionStart hook) also exits 0
+  in non-git directories instead of failing the hook.
+- `claude-oops snap` (manual, non-quiet) still errors loudly — explicit
+  user action deserves an explicit error.
+
 ## v0.3.2
 
 - Per-file restore: rewrite path resolution. Use `git rev-parse --show-prefix`
