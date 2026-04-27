@@ -67,9 +67,13 @@ boring part — automation and ergonomics around it are the actual product.
 
 ## Install
 
+Both commands go in your terminal. The first downloads the binary; the
+second is a subcommand of that same binary that wires up the hooks.
+
 ```bash
-cargo install claude-oops
-claude-oops install   # patches ~/.claude/settings.json with hooks
+cargo install claude-oops          # downloads the binary into ~/.cargo/bin/
+claude-oops install                # patches ~/.claude/settings.json with hooks
+                                   # and ships ~/.claude/commands/oops.md
 ```
 
 After `install`, every Claude Code session will:
