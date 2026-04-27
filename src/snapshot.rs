@@ -2,6 +2,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
+use std::path::{Path, PathBuf};
 
 use crate::git::GitRepo;
 use crate::storage::{self, SnapshotRecord};
@@ -102,6 +103,143 @@ pub fn snap(repo: &GitRepo, opts: SnapOpts) -> Result<SnapOutcome> {
     storage::append(repo, &rec)?;
     existing.push(rec.clone());
     Ok(SnapOutcome::Created(rec))
+}
+
+/// Lexically resolve `path` (relative to `cwd`) into a repo-root-relative
+/// string, without touching the filesystem (so it works even for paths
+/// that don't exist anymore — restore is the whole point).
+///
+/// Returns `Err` if the path escapes the repo.
+pub fn resolve_path(cwd: &Path, repo_root: &Path, path: &str) -> Result<String> {
+    let pb = PathBuf::from(path);
+    let abs = if pb.is_absolute() { pb } else { cwd.join(&pb) };
+    let cleaned = lexical_clean(&abs);
+    let rel = cleaned.strip_prefix(repo_root).map_err(|_| {
+        anyhow!(
+            "{} resolves to {}, which is outside the repo at {}",
+            path,
+            cleaned.display(),
+            repo_root.display()
+        )
+    })?;
+    if rel.as_os_str().is_empty() {
+        // The user gave the repo root itself — treat as "everything".
+        return Ok(String::new());
+    }
+    Ok(rel.to_string_lossy().to_string())
+}
+
+/// Collapse `.` and `..` components purely lexically (no filesystem hits).
+fn lexical_clean(p: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out: Vec<Component> = Vec::new();
+    for comp in p.components() {
+        match comp {
+            Component::Prefix(_) | Component::RootDir => out.push(comp),
+            Component::CurDir => {}
+            Component::ParentDir => match out.last() {
+                Some(Component::Normal(_)) => {
+                    out.pop();
+                }
+                Some(Component::ParentDir) | None => out.push(comp),
+                Some(Component::Prefix(_)) | Some(Component::RootDir) => {
+                    // Can't go above root — silently ignore.
+                }
+                Some(Component::CurDir) => unreachable!(),
+            },
+            Component::Normal(_) => out.push(comp),
+        }
+    }
+    out.iter().map(|c| c.as_os_str()).collect()
+}
+
+/// Restore only the given paths from the snapshot, leaving everything else
+/// in the working tree untouched.
+///
+/// For each path:
+/// - If it exists in the snapshot, the working-tree version is overwritten
+///   with the snapshot version.
+/// - If it exists in the working tree but not in the snapshot, it's deleted
+///   (that's what "restore the snapshot's state for this path" means).
+/// - Empty intersection → no-op.
+///
+/// Pathspecs that match multiple files are expanded recursively.
+pub fn restore_paths(
+    repo: &GitRepo,
+    rec: &SnapshotRecord,
+    paths: &[String],
+) -> Result<RestorePathReport> {
+    if paths.is_empty() {
+        return Err(anyhow!("restore_paths called with empty paths"));
+    }
+
+    // Build a private index from the snapshot tree.
+    let tmp_dir = repo.git_dir()?.join("claude-oops");
+    std::fs::create_dir_all(&tmp_dir)
+        .with_context(|| format!("failed to create {}", tmp_dir.display()))?;
+    let tmp_index = tmp_dir.join("restore-index");
+    let _ = std::fs::remove_file(&tmp_index);
+
+    let status = repo
+        .git()
+        .env("GIT_INDEX_FILE", &tmp_index)
+        .args(["read-tree", &rec.tree_sha])
+        .status()
+        .context("read-tree (restore) failed to run")?;
+    if !status.success() {
+        return Err(anyhow!("git read-tree {} failed", rec.tree_sha));
+    }
+
+    let snap_paths = repo.list_tree_paths(&rec.tree_sha, paths)?;
+    let working_paths = repo.list_working_paths(paths)?;
+
+    // Files present in the snapshot under the pathspec → check them out.
+    if !snap_paths.is_empty() {
+        let mut cmd = repo.git();
+        cmd.env("GIT_INDEX_FILE", &tmp_index)
+            .args(["checkout-index", "-f", "--"]);
+        for p in &snap_paths {
+            cmd.arg(p);
+        }
+        let status = cmd.status().context("checkout-index (restore) failed to run")?;
+        if !status.success() {
+            return Err(anyhow!("git checkout-index failed during restore"));
+        }
+    }
+
+    // Files in working tree under the pathspec but not in snapshot → remove.
+    use std::collections::HashSet;
+    let snap_set: HashSet<&String> = snap_paths.iter().collect();
+    let mut deleted = Vec::new();
+    for w in &working_paths {
+        if !snap_set.contains(w) {
+            let abs = repo.root().join(w);
+            if std::fs::remove_file(&abs).is_ok() {
+                deleted.push(w.clone());
+            }
+        }
+    }
+
+    let _ = std::fs::remove_file(&tmp_index);
+
+    if snap_paths.is_empty() && deleted.is_empty() {
+        return Err(anyhow!(
+            "no matching files in snapshot or working tree for the given paths"
+        ));
+    }
+
+    Ok(RestorePathReport {
+        restored: snap_paths,
+        deleted,
+    })
+}
+
+/// What `restore_paths` did.
+pub struct RestorePathReport {
+    /// Paths that were checked out from the snapshot.
+    pub restored: Vec<String>,
+    /// Paths that were deleted (present in working tree, absent in snapshot).
+    pub deleted: Vec<String>,
 }
 
 /// Restore the working tree to the snapshot's tree.

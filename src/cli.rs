@@ -52,12 +52,19 @@ pub enum Cmd {
     },
 
     /// Restore the working tree to a snapshot.
+    ///
+    /// Without paths, restores the whole tree. Pass paths after `--` to
+    /// restore only those files (everything else in the working tree is
+    /// left alone). Example: `claude-oops to abc123f -- src/auth.rs`.
     To {
         /// Snapshot id (or unambiguous prefix).
         id: String,
         /// Skip confirmation prompt.
         #[arg(short = 'f', long, alias = "yes")]
         force: bool,
+        /// Paths to restore (after `--`); empty = restore everything.
+        #[arg(last = true)]
+        paths: Vec<String>,
     },
 
     /// Delete a snapshot.

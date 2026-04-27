@@ -217,6 +217,56 @@ impl GitRepo {
             .unwrap_or(false)
     }
 
+    /// List paths under `tree` that match the given pathspec (relative to
+    /// repo root). Empty `paths` lists everything.
+    pub fn list_tree_paths(&self, tree: &str, paths: &[String]) -> Result<Vec<String>> {
+        let mut cmd = self.git();
+        cmd.args(["ls-tree", "-r", "--name-only", tree]);
+        if !paths.is_empty() {
+            cmd.arg("--");
+            for p in paths {
+                cmd.arg(p);
+            }
+        }
+        let out = cmd.output().context("git ls-tree failed")?;
+        if !out.status.success() {
+            return Err(anyhow!(
+                "git ls-tree failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| l.to_string())
+            .collect())
+    }
+
+    /// List tracked + untracked files (excluding ignored) under the given
+    /// pathspec. Empty `paths` lists everything.
+    pub fn list_working_paths(&self, paths: &[String]) -> Result<Vec<String>> {
+        let mut cmd = self.git();
+        cmd.args(["ls-files", "-c", "-o", "--exclude-standard"]);
+        if !paths.is_empty() {
+            cmd.arg("--");
+            for p in paths {
+                cmd.arg(p);
+            }
+        }
+        let out = cmd.output().context("git ls-files failed")?;
+        if !out.status.success() {
+            return Err(anyhow!(
+                "git ls-files failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| l.to_string())
+            .collect())
+    }
+
     /// Per-file change summary between two trees:
     /// `Vec<(status_letter, path)>` where status is `A`/`M`/`D`/`R`/etc.
     pub fn name_status(&self, from: &str, to: &str) -> Result<Vec<(char, String)>> {

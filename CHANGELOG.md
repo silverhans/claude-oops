@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Per-file restore.** `claude-oops to <id> -- src/auth.rs` restores only
+  the named paths from the snapshot, leaving everything else in the
+  working tree alone. Pathspecs work too: `to <id> -- src/` for a whole
+  directory. Files that exist in the working tree but not in the snapshot
+  are deleted (that's what "restore the snapshot's state for this path"
+  means). Paths are resolved relative to your current directory, so
+  running from a subdirectory works as expected.
+- CI: granted `contents: write` to the release job so `softprops/action-gh-release`
+  can publish.
+
 ## v0.2.0
 
 - New `claude-oops show <id>` — file-level summary of what `to <id>` would

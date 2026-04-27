@@ -422,6 +422,171 @@ fn clean_removes_snapshots_and_refs() {
 }
 
 #[test]
+fn per_file_restore_only_touches_requested_paths() {
+    let repo = TempRepo::new();
+    repo.write("keep.txt", "v1\n");
+    repo.write("oops.txt", "v1\n");
+    run_oops(repo.path(), &["snap", "-m", "v1"]);
+
+    // User makes good and bad changes.
+    repo.write("keep.txt", "good edit\n");
+    repo.write("oops.txt", "bad edit\n");
+
+    let (json, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let id = serde_json::from_str::<serde_json::Value>(&json).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Restore only oops.txt.
+    let (out, stderr, code) =
+        run_oops(repo.path(), &["to", &id, "--force", "--", "oops.txt"]);
+    assert_eq!(code, 0, "out={out} stderr={stderr}");
+
+    // oops.txt is back to v1, keep.txt keeps the good edit.
+    assert_eq!(repo.read("oops.txt"), "v1\n");
+    assert_eq!(repo.read("keep.txt"), "good edit\n");
+}
+
+#[test]
+fn per_file_restore_brings_back_deleted_file() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "alpha\n");
+    repo.write("b.txt", "beta\n");
+    run_oops(repo.path(), &["snap"]);
+
+    std::fs::remove_file(repo.path().join("a.txt")).unwrap();
+
+    let (json, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let id = serde_json::from_str::<serde_json::Value>(&json).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (_, _, code) = run_oops(repo.path(), &["to", &id, "--force", "--", "a.txt"]);
+    assert_eq!(code, 0);
+    assert!(repo.exists("a.txt"));
+    assert_eq!(repo.read("a.txt"), "alpha\n");
+}
+
+#[test]
+fn per_file_restore_removes_files_added_after_snapshot() {
+    let repo = TempRepo::new();
+    repo.write("orig.txt", "orig\n");
+    run_oops(repo.path(), &["snap"]);
+
+    // User adds a new file after the snapshot.
+    repo.write("garbage.txt", "garbage\n");
+
+    let (json, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let id = serde_json::from_str::<serde_json::Value>(&json).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Restore just garbage.txt — it isn't in the snapshot, so it should
+    // disappear from the working tree.
+    let (_, _, code) =
+        run_oops(repo.path(), &["to", &id, "--force", "--", "garbage.txt"]);
+    assert_eq!(code, 0);
+    assert!(!repo.exists("garbage.txt"));
+    // orig.txt is untouched.
+    assert!(repo.exists("orig.txt"));
+}
+
+#[test]
+fn per_file_restore_handles_directory_pathspec() {
+    let repo = TempRepo::new();
+    repo.write("src/a.rs", "v1\n");
+    repo.write("src/b.rs", "v1\n");
+    repo.write("docs/intro.md", "v1\n");
+    run_oops(repo.path(), &["snap"]);
+
+    repo.write("src/a.rs", "edited\n");
+    repo.write("src/b.rs", "edited\n");
+    repo.write("docs/intro.md", "edited\n");
+
+    let (json, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let id = serde_json::from_str::<serde_json::Value>(&json).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Restore only the src/ subtree.
+    let (_, _, code) = run_oops(repo.path(), &["to", &id, "--force", "--", "src"]);
+    assert_eq!(code, 0);
+    assert_eq!(repo.read("src/a.rs"), "v1\n");
+    assert_eq!(repo.read("src/b.rs"), "v1\n");
+    assert_eq!(repo.read("docs/intro.md"), "edited\n"); // untouched
+}
+
+#[test]
+fn per_file_restore_with_no_matches_errors() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "v1\n");
+    run_oops(repo.path(), &["snap"]);
+
+    let (json, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let id = serde_json::from_str::<serde_json::Value>(&json).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (_, stderr, code) =
+        run_oops(repo.path(), &["to", &id, "--force", "--", "nonexistent.txt"]);
+    assert_ne!(code, 0);
+    assert!(
+        stderr.to_lowercase().contains("no matching"),
+        "expected no-match error, got: {stderr}"
+    );
+}
+
+#[test]
+fn per_file_restore_resolves_paths_relative_to_cwd() {
+    // Run claude-oops from a subdirectory and pass a relative path —
+    // it should resolve correctly against the repo root.
+    let repo = TempRepo::new();
+    repo.write("src/main.rs", "v1\n");
+    run_oops(repo.path(), &["snap"]);
+    repo.write("src/main.rs", "v2\n");
+
+    let (json, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let id = serde_json::from_str::<serde_json::Value>(&json).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // cwd = src/, path = main.rs → should resolve to src/main.rs
+    let src = repo.path().join("src");
+    let (_, stderr, code) =
+        run_oops(&src, &["to", &id, "--force", "--", "main.rs"]);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    assert_eq!(repo.read("src/main.rs"), "v1\n");
+}
+
+#[test]
+fn per_file_restore_rejects_paths_outside_repo() {
+    let repo = TempRepo::new();
+    run_oops(repo.path(), &["snap"]);
+    let (json, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let id = serde_json::from_str::<serde_json::Value>(&json).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Try to escape via ..
+    let (_, stderr, code) = run_oops(
+        repo.path(),
+        &["to", &id, "--force", "--", "../../etc/passwd"],
+    );
+    assert_ne!(code, 0);
+    assert!(
+        stderr.to_lowercase().contains("outside the repo"),
+        "expected outside-repo error, got: {stderr}"
+    );
+}
+
+#[test]
 fn outside_git_repo_errors_clearly() {
     let dir = tempfile::tempdir().unwrap();
     let (_, stderr, code) = run_oops(dir.path(), &["snap"]);

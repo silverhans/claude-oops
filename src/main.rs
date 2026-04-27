@@ -101,22 +101,51 @@ fn run() -> Result<()> {
             Ok(())
         }
 
-        Cmd::To { id, force } => {
+        Cmd::To { id, force, paths } => {
             let repo = GitRepo::discover(&cwd)?;
             let recs = storage::read_all(&repo)?;
             let rec = storage::find_by_id(&recs, &id)?.clone();
-            if !force
-                && !confirm(&format!(
-                    "Restore working tree to snapshot {} ({})? Local changes will be overwritten.",
-                    rec.id,
-                    rec.message.as_deref().unwrap_or(&rec.trigger),
-                ))?
-            {
-                println!("aborted");
-                return Ok(());
+            let label = rec.message.as_deref().unwrap_or(&rec.trigger);
+
+            if paths.is_empty() {
+                // Whole-tree restore (legacy behavior).
+                if !force
+                    && !confirm(&format!(
+                        "Restore working tree to snapshot {} ({})? Local changes will be overwritten.",
+                        rec.id, label,
+                    ))?
+                {
+                    println!("aborted");
+                    return Ok(());
+                }
+                snapshot::restore(&repo, &rec)?;
+                println!("restored to {}", rec.id);
+            } else {
+                // Per-file restore.
+                let resolved: Vec<String> = paths
+                    .iter()
+                    .map(|p| snapshot::resolve_path(&cwd, repo.root(), p))
+                    .collect::<Result<Vec<_>>>()?;
+                if !force
+                    && !confirm(&format!(
+                        "Restore {} path{} from snapshot {} ({})? Working-tree versions will be overwritten.",
+                        resolved.len(),
+                        if resolved.len() == 1 { "" } else { "s" },
+                        rec.id,
+                        label,
+                    ))?
+                {
+                    println!("aborted");
+                    return Ok(());
+                }
+                let report = snapshot::restore_paths(&repo, &rec, &resolved)?;
+                println!(
+                    "restored {} file(s), deleted {} file(s) from {}",
+                    report.restored.len(),
+                    report.deleted.len(),
+                    rec.id
+                );
             }
-            snapshot::restore(&repo, &rec)?;
-            println!("restored to {}", rec.id);
             Ok(())
         }
 

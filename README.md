@@ -60,7 +60,13 @@ claude-oops show abc123f         # which files would change on restore
 claude-oops diff abc123f         # full diff vs the snapshot
 claude-oops to abc123f           # restore (asks for confirmation)
 claude-oops to abc123f --force   # skip the confirmation prompt
+claude-oops to abc123f -- src/auth.rs   # restore one file only
+claude-oops to abc123f -- src/          # restore a subtree only
 ```
+
+Per-file restore leaves everything else in your working tree alone — useful
+when only one file went sideways. Files that exist in your working tree but
+not in the snapshot are deleted (that's the snapshot's state for that path).
 
 Inside a Claude Code session, type `/oops` instead — the slash command
 runs `claude-oops list` and helps you pick a snapshot to restore without
@@ -78,7 +84,7 @@ different one.
 | `list [--json] [--limit N]` | List snapshots in this repo. |
 | `show <id>`      | List the files that would change on restore. |
 | `diff <id>`      | Full diff between working tree and snapshot. |
-| `to <id> [-f]`   | Restore working tree to snapshot. |
+| `to <id> [-f] [-- PATHS]` | Restore working tree (or specific paths). |
 | `drop <id>`      | Delete a snapshot ref + remove from index. |
 | `clean`          | Apply retention: keep last 30 OR < 7 days old. |
 | `install`        | Add hooks to `~/.claude/settings.json` and ship `/oops`. |
