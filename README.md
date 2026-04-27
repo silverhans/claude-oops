@@ -1,5 +1,10 @@
 # claude-oops
 
+[![Crates.io](https://img.shields.io/crates/v/claude-oops.svg?logo=rust&color=orange)](https://crates.io/crates/claude-oops)
+[![CI](https://github.com/silverhans/claude-oops/actions/workflows/ci.yml/badge.svg)](https://github.com/silverhans/claude-oops/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)](https://github.com/silverhans/claude-oops/releases/latest)
+
 > An undo button for Claude Code.
 
 `claude-oops` takes a git-stash-style snapshot of your working tree before
