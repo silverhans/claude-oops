@@ -124,7 +124,7 @@ fn run() -> Result<()> {
                 // Per-file restore.
                 let resolved: Vec<String> = paths
                     .iter()
-                    .map(|p| snapshot::resolve_path(&cwd, repo.root(), p))
+                    .map(|p| snapshot::resolve_path(&repo, &cwd, p))
                     .collect::<Result<Vec<_>>>()?;
                 if !force
                     && !confirm(&format!(

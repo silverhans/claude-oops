@@ -217,6 +217,27 @@ impl GitRepo {
             .unwrap_or(false)
     }
 
+    /// Path from repo root to the given working directory, using `/`
+    /// separators with a trailing `/` (empty if `cwd` is the repo root).
+    /// Mirrors `git rev-parse --show-prefix`. We can't use `self.git()` for
+    /// this because that command runs at the repo root; we need it from the
+    /// user's actual cwd.
+    pub fn show_prefix_from(cwd: &Path) -> Result<String> {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(cwd)
+            .args(["rev-parse", "--show-prefix"])
+            .output()
+            .context("git rev-parse --show-prefix failed")?;
+        if !out.status.success() {
+            return Err(anyhow!(
+                "git rev-parse --show-prefix failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        Ok(String::from_utf8(out.stdout)?.trim().to_string())
+    }
+
     /// List paths under `tree` that match the given pathspec (relative to
     /// repo root). Empty `paths` lists everything.
     pub fn list_tree_paths(&self, tree: &str, paths: &[String]) -> Result<Vec<String>> {

@@ -105,61 +105,60 @@ pub fn snap(repo: &GitRepo, opts: SnapOpts) -> Result<SnapOutcome> {
     Ok(SnapOutcome::Created(rec))
 }
 
-/// Lexically resolve `path` (relative to `cwd`) into a repo-root-relative
-/// string, without touching the filesystem (so it works even for paths
-/// that don't exist anymore — restore is the whole point).
+/// Resolve a user-supplied path into a repo-root-relative string with `/`
+/// separators — without touching the filesystem (so it works for paths
+/// that don't exist any more; restore is the whole point).
 ///
-/// Returns `Err` if the path escapes the repo.
-pub fn resolve_path(cwd: &Path, repo_root: &Path, path: &str) -> Result<String> {
-    let pb = PathBuf::from(path);
-    let abs = if pb.is_absolute() { pb } else { cwd.join(&pb) };
-    let cleaned = lexical_clean(&abs);
-    let rel = cleaned.strip_prefix(repo_root).map_err(|_| {
-        anyhow!(
-            "{} resolves to {}, which is outside the repo at {}",
-            path,
-            cleaned.display(),
-            repo_root.display()
-        )
-    })?;
-    if rel.as_os_str().is_empty() {
-        // The user gave the repo root itself — treat as "everything".
+/// We let git compute the cwd-relative-to-repo-root prefix itself
+/// (`git rev-parse --show-prefix` from `cwd`); then we tack the user's
+/// input onto that and clean it up lexically. This sidesteps the
+/// Windows-specific mess where the OS gives us a path with 8.3 short
+/// names while git gives us long names — comparing absolute paths
+/// directly is unreliable.
+///
+/// Absolute paths are rejected: pass repo-relative paths instead.
+pub fn resolve_path(repo: &GitRepo, cwd: &Path, path: &str) -> Result<String> {
+    let _ = repo; // accepted for future use; show_prefix is on GitRepo's namespace
+    if PathBuf::from(path).is_absolute() {
+        return Err(anyhow!(
+            "absolute paths aren't supported — pass a path relative to the repo"
+        ));
+    }
+    let prefix = GitRepo::show_prefix_from(cwd)?;
+    // Normalize backslashes the user might pass on Windows.
+    let user = path.replace('\\', "/");
+    let combined = format!("{}{}", prefix, user);
+    let cleaned = clean_slash_path(&combined);
+    if cleaned.is_empty() {
         return Ok(String::new());
     }
-    // Always emit forward slashes, regardless of OS — git's pathspecs use
-    // `/` even on Windows, and our index/refs are populated by git too.
-    Ok(rel
-        .components()
-        .filter_map(|c| match c {
-            std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/"))
+    if cleaned == ".." || cleaned.starts_with("../") {
+        return Err(anyhow!(
+            "{} resolves to {}, which is outside the repo",
+            path,
+            cleaned
+        ));
+    }
+    Ok(cleaned)
 }
 
-/// Collapse `.` and `..` components purely lexically (no filesystem hits).
-fn lexical_clean(p: &Path) -> PathBuf {
-    use std::path::Component;
-    let mut out: Vec<Component> = Vec::new();
-    for comp in p.components() {
+/// Collapse `.` and `..` components in a `/`-separated path purely lexically.
+/// Multiple slashes and leading/trailing slashes are squashed.
+fn clean_slash_path(p: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for comp in p.split('/') {
         match comp {
-            Component::Prefix(_) | Component::RootDir => out.push(comp),
-            Component::CurDir => {}
-            Component::ParentDir => match out.last() {
-                Some(Component::Normal(_)) => {
+            "" | "." => {}
+            ".." => match out.last() {
+                Some(prev) if *prev != ".." => {
                     out.pop();
                 }
-                Some(Component::ParentDir) | None => out.push(comp),
-                Some(Component::Prefix(_)) | Some(Component::RootDir) => {
-                    // Can't go above root — silently ignore.
-                }
-                Some(Component::CurDir) => unreachable!(),
+                _ => out.push(".."),
             },
-            Component::Normal(_) => out.push(comp),
+            other => out.push(other),
         }
     }
-    out.iter().map(|c| c.as_os_str()).collect()
+    out.join("/")
 }
 
 /// Restore only the given paths from the snapshot, leaving everything else

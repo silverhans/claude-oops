@@ -1,12 +1,21 @@
 # Changelog
 
+## v0.3.2
+
+- Per-file restore: rewrite path resolution. Use `git rev-parse --show-prefix`
+  from the user's cwd instead of comparing absolute paths — Windows reports
+  cwd with 8.3 short names (`RUNNER~1`) while git uses long names
+  (`runneradmin`), and a lexical strip-prefix between them fails.
+  Now we work entirely in repo-relative space; absolute paths are
+  rejected with a helpful error.
+
 ## v0.3.1
 
-- Fix per-file restore on Windows: pathspec strings now always use `/`
-  separators (git pathspecs are forward-slash even on Windows).
-- v0.3.0 is yanked — same code, just non-functional pathspec on Windows.
+- (yanked — Windows path resolution still broken; superseded by v0.3.2)
+- Attempted Windows pathspec fix: emit forward slashes regardless of OS.
+  Insufficient on its own — see v0.3.2.
 
-## v0.3.0
+## v0.3.0 (yanked — broken on Windows)
 
 - **Per-file restore.** `claude-oops to <id> -- src/auth.rs` restores only
   the named paths from the snapshot, leaving everything else in the
