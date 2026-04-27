@@ -62,6 +62,8 @@ JWT code is back. So is the rest of the world.
 
 Total damage: 30 seconds and zero commits lost.
 
+![/oops in action](docs/oops-flow.png)
+
 ## Install
 
 Both commands run in your terminal:
