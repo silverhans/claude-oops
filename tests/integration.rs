@@ -439,8 +439,7 @@ fn per_file_restore_only_touches_requested_paths() {
         .to_string();
 
     // Restore only oops.txt.
-    let (out, stderr, code) =
-        run_oops(repo.path(), &["to", &id, "--force", "--", "oops.txt"]);
+    let (out, stderr, code) = run_oops(repo.path(), &["to", &id, "--force", "--", "oops.txt"]);
     assert_eq!(code, 0, "out={out} stderr={stderr}");
 
     // oops.txt is back to v1, keep.txt keeps the good edit.
@@ -486,8 +485,7 @@ fn per_file_restore_removes_files_added_after_snapshot() {
 
     // Restore just garbage.txt — it isn't in the snapshot, so it should
     // disappear from the working tree.
-    let (_, _, code) =
-        run_oops(repo.path(), &["to", &id, "--force", "--", "garbage.txt"]);
+    let (_, _, code) = run_oops(repo.path(), &["to", &id, "--force", "--", "garbage.txt"]);
     assert_eq!(code, 0);
     assert!(!repo.exists("garbage.txt"));
     // orig.txt is untouched.
@@ -532,8 +530,10 @@ fn per_file_restore_with_no_matches_errors() {
         .unwrap()
         .to_string();
 
-    let (_, stderr, code) =
-        run_oops(repo.path(), &["to", &id, "--force", "--", "nonexistent.txt"]);
+    let (_, stderr, code) = run_oops(
+        repo.path(),
+        &["to", &id, "--force", "--", "nonexistent.txt"],
+    );
     assert_ne!(code, 0);
     assert!(
         stderr.to_lowercase().contains("no matching"),
@@ -558,8 +558,7 @@ fn per_file_restore_resolves_paths_relative_to_cwd() {
 
     // cwd = src/, path = main.rs → should resolve to src/main.rs
     let src = repo.path().join("src");
-    let (_, stderr, code) =
-        run_oops(&src, &["to", &id, "--force", "--", "main.rs"]);
+    let (_, stderr, code) = run_oops(&src, &["to", &id, "--force", "--", "main.rs"]);
     assert_eq!(code, 0, "stderr: {stderr}");
     assert_eq!(repo.read("src/main.rs"), "v1\n");
 }

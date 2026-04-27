@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.1
+
+- Fix per-file restore on Windows: pathspec strings now always use `/`
+  separators (git pathspecs are forward-slash even on Windows).
+- v0.3.0 is yanked — same code, just non-functional pathspec on Windows.
+
 ## v0.3.0
 
 - **Per-file restore.** `claude-oops to <id> -- src/auth.rs` restores only

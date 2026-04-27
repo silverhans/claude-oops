@@ -126,7 +126,16 @@ pub fn resolve_path(cwd: &Path, repo_root: &Path, path: &str) -> Result<String> 
         // The user gave the repo root itself — treat as "everything".
         return Ok(String::new());
     }
-    Ok(rel.to_string_lossy().to_string())
+    // Always emit forward slashes, regardless of OS — git's pathspecs use
+    // `/` even on Windows, and our index/refs are populated by git too.
+    Ok(rel
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/"))
 }
 
 /// Collapse `.` and `..` components purely lexically (no filesystem hits).
@@ -201,7 +210,9 @@ pub fn restore_paths(
         for p in &snap_paths {
             cmd.arg(p);
         }
-        let status = cmd.status().context("checkout-index (restore) failed to run")?;
+        let status = cmd
+            .status()
+            .context("checkout-index (restore) failed to run")?;
         if !status.success() {
             return Err(anyhow!("git checkout-index failed during restore"));
         }
