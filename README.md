@@ -18,10 +18,15 @@ something you weren't ready to lose, or runs `rm -rf` on the wrong folder.
 By the time you notice, the work is gone.
 
 `claude-oops` is a tiny tool that quietly takes a **snapshot of your
-project** before Claude does anything risky. If something goes wrong, you
-can rewind to any snapshot in two seconds — even bringing back files Claude
-deleted entirely. You don't have to remember to "save" anything; it
-happens automatically in the background while you work.
+project** before Claude does anything risky, and once more after every
+turn it finishes. If something goes wrong, you can rewind to any snapshot
+in two seconds — even bringing back files Claude deleted entirely. You
+don't have to remember to "save" anything; it happens automatically in
+the background while you work.
+
+Or, in one line: it gives you **git-style undo without giving Claude
+git access**. Snapshots are stored as git objects, but Claude never sees
+them — only you do.
 
 It's like the **undo** button in your text editor, but for everything
 Claude does to your project.
@@ -119,8 +124,18 @@ produces 3–7 snapshots, not 30. It only snapshots:
 - **Before Claude edits a file** — but only if your code actually changed
   since the last snapshot, and at most once every 2 minutes.
 - **Before Claude runs a dangerous shell command** — `rm -rf`,
-  `git reset --hard`, `find … -delete`, and similar foot-guns. Boring
-  commands like `ls` or `npm test` don't trigger anything.
+  `git reset --hard`, `sed -i`, `find … -delete`, and similar foot-guns.
+  Boring commands like `ls` or `npm test` don't trigger anything.
+- **After Claude finishes a turn**, as a content-agnostic safety net.
+  This catches regressions even when the dangerous-command matcher missed
+  something (custom scripts, novel commands, tools the matcher doesn't
+  know about). Idempotency suppresses snapshots for chat-only turns
+  where nothing changed.
+
+The last point matters especially in **agent-loop setups** where Claude
+operates autonomously without git access — you can't trust Claude to
+flag its own destructive moves, but every completed turn becomes an
+atomic recoverable unit regardless.
 
 You can also take a snapshot manually any time:
 
@@ -173,7 +188,7 @@ For the curious:
 
 Fair question. `claude-oops` isn't a storage tool — it's an **automation
 layer** on top of git. Storage is git, and that's a feature: free,
-deduplicated, no extra dependency to install. The value is in three
+deduplicated, no extra dependency to install. The value is in four
 things bare git won't do for you:
 
 1. **Capture untracked files without disturbing the working tree.**
@@ -183,13 +198,20 @@ things bare git won't do for you:
 2. **Snapshot at the right moments, automatically.** With bare git you'd
    have to remember to `git stash` before every risky thing Claude does.
    Nobody actually does that. claude-oops hooks into Claude Code's
-   `SessionStart` and `PreToolUse` events.
+   `SessionStart`, `PreToolUse`, and `Stop` events.
 3. **Restore in two commands without spelunking the reflog.**
    `claude-oops list` gives you a labelled, time-sorted table; `to <id>`
    puts things back. The bare-git equivalent is some combination of
    `git reflog` + `git stash list` + `git checkout-index` + tree-ish
    syntax — workable when you're calm, less so when you've just realized
    half your repo is gone.
+4. **Give Claude undo without giving Claude git.** In agent-loop setups
+   where Claude operates autonomously, you often *don't* want to grant
+   it commit/branch/reset privileges (it breaks history, makes accidental
+   commits, destabilizes the repo). claude-oops puts the recovery layer
+   *outside* Claude's reach — every turn is automatically checkpointed,
+   and only you (or your supervising orchestrator) can rewind. **Git
+   semantics, without giving Claude the git CLI.**
 
 Requiring git isn't really a requirement: git is on every dev machine,
 and `git init` takes a second.

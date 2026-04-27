@@ -15,6 +15,11 @@ pub mod trigger {
     pub const SESSION_START: &str = "session-start";
     pub const PRE_EDIT: &str = "pre-edit";
     pub const PRE_BASH: &str = "pre-bash";
+    /// Snapshot taken when Claude finishes a turn — content-agnostic
+    /// safety net for cases where the dangerous-bash matcher missed
+    /// something. Especially useful in agent-loop setups where
+    /// Claude operates autonomously without git access.
+    pub const POST_TURN: &str = "post-turn";
 }
 
 /// Options for taking a snapshot.

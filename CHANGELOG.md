@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.4.0
+
+Two improvements driven by feedback from early users — both close real
+gaps in the snapshot strategy.
+
+- **`Stop` hook: snapshot after every Claude turn.** Up to v0.3.x snapshots
+  were strictly *before* risky operations (PreToolUse hook + a curated
+  dangerous-bash matcher). That assumed Claude could recognise its own
+  destructive moves — which it often can't. The Stop hook fires when
+  Claude finishes a turn and is content-agnostic: every completed turn
+  becomes an atomic recoverable unit, no matter what was inside.
+  Idempotency suppresses snapshots for chat-only turns, so chatty
+  sessions don't fill up with noise.
+- **Especially valuable in agent-loop setups** where Claude operates
+  autonomously without git access. The new framing in the README:
+  *git semantics without giving Claude the git CLI* — claude-oops
+  provides the recovery layer outside Claude's reach.
+- **Expanded dangerous-bash patterns:** `sed -i`, `awk -i inplace`,
+  `perl -i` / `perl -pi`, `git apply`, `truncate -s 0`. These were all
+  destructive operations the matcher used to miss.
+
 ## v0.3.4
 
 Three real bugs found by the first user trying `/oops` on a real project:

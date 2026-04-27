@@ -233,6 +233,34 @@ fn uninstall_preserves_user_modified_slash_command() {
 }
 
 #[test]
+fn install_writes_stop_hook() {
+    use std::process::Command;
+    let dir = tempfile::tempdir().unwrap();
+    let settings = dir.path().join("settings.json");
+    let commands_dir = dir.path().join("commands");
+    let bin = helpers::bin_path();
+
+    let out = Command::new(&bin)
+        .arg("install")
+        .env("CLAUDE_OOPS_SETTINGS", &settings)
+        .env("CLAUDE_OOPS_COMMANDS_DIR", &commands_dir)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    let stop = v["hooks"]["Stop"].as_array().expect("Stop array");
+    assert_eq!(stop.len(), 1, "expected one Stop entry");
+    let cmd = stop[0]["hooks"][0]["command"].as_str().unwrap();
+    assert!(cmd.contains("snap"), "Stop command should call snap: {cmd}");
+    assert!(
+        cmd.contains("post-turn"),
+        "Stop command should use post-turn trigger: {cmd}"
+    );
+}
+
+#[test]
 fn install_is_idempotent() {
     use std::process::Command;
     let dir = tempfile::tempdir().unwrap();

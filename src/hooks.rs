@@ -149,6 +149,12 @@ fn our_hooks() -> Vec<(&'static str, &'static str, &'static str)> {
             "Edit|Write|Bash",
             "claude-oops _hook-pre-tool-use",
         ),
+        // Stop fires when Claude finishes a turn. Content-agnostic safety
+        // net — catches regressions even when the dangerous-bash matcher
+        // missed something (e.g. `sed -i`, custom scripts, novel commands).
+        // Idempotency in snap() means turns where the working tree didn't
+        // change produce no snapshot, so chat-only turns add zero noise.
+        ("Stop", "*", "claude-oops snap --trigger post-turn --quiet"),
     ]
 }
 
@@ -293,21 +299,33 @@ fn is_dangerous_bash(cmd: &str) -> bool {
     // whitespace variations. The cost of a false positive is one extra snapshot
     // (cheap); the cost of a false negative is data loss.
     let needles: &[&str] = &[
+        // File destruction
         "rm -rf",
         "rm -fr",
         "rm -r ",
         "rm -f ",
         "rm -rf=",
         "mv -f",
+        "shred",
+        "truncate -s 0",
+        "truncate --size=0",
+        // Block-device / FS destruction
         " dd ",
+        "> /dev/sd",
+        "mkfs",
+        // Git operations that clobber uncommitted work
         "git reset --hard",
         "git clean",
         "git checkout --",
         "git checkout .",
         "git restore .",
-        "> /dev/sd",
-        "mkfs",
-        "shred",
+        "git apply",
+        // In-place edit / patch tools — easy to misuse, hard to undo
+        "sed -i",
+        "sed -i ",
+        "awk -i inplace",
+        "perl -i",
+        "perl -pi",
     ];
     let normalized = format!(" {} ", cmd);
     if needles.iter().any(|n| normalized.contains(n)) {
@@ -451,13 +469,25 @@ mod tests {
 
     #[test]
     fn dangerous_bash_recognized() {
+        // File destruction
         assert!(is_dangerous_bash("rm -rf node_modules"));
         assert!(is_dangerous_bash("cd /tmp && rm -rf ./build"));
-        assert!(is_dangerous_bash("git reset --hard HEAD~5"));
-        assert!(is_dangerous_bash("git clean -fd"));
-        assert!(is_dangerous_bash("find . -name '*.log' -delete"));
         assert!(is_dangerous_bash("ls | xargs rm"));
         assert!(is_dangerous_bash("mkfs.ext4 /dev/sda1"));
+        assert!(is_dangerous_bash("find . -name '*.log' -delete"));
+
+        // Git
+        assert!(is_dangerous_bash("git reset --hard HEAD~5"));
+        assert!(is_dangerous_bash("git clean -fd"));
+        assert!(is_dangerous_bash("git apply patch.diff"));
+
+        // In-place edit tools — added in v0.4 after forum feedback
+        assert!(is_dangerous_bash("sed -i 's/foo/bar/g' src/lib.rs"));
+        assert!(is_dangerous_bash("sed -i.bak 's/x/y/' file"));
+        assert!(is_dangerous_bash("awk -i inplace '{print}' file.txt"));
+        assert!(is_dangerous_bash("perl -i -pe 's/x/y/' file"));
+        assert!(is_dangerous_bash("perl -pi -e 's/foo/bar/' src/*.rs"));
+        assert!(is_dangerous_bash("truncate -s 0 logfile.txt"));
     }
 
     #[test]
