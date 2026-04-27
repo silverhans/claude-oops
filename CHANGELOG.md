@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.0
 
 - **Per-file restore.** `claude-oops to <id> -- src/auth.rs` restores only
   the named paths from the snapshot, leaving everything else in the
@@ -11,6 +11,7 @@
   running from a subdirectory works as expected.
 - CI: granted `contents: write` to the release job so `softprops/action-gh-release`
   can publish.
+- Published to crates.io: `cargo install claude-oops` now works.
 
 ## v0.2.0
 
