@@ -586,6 +586,96 @@ fn per_file_restore_rejects_paths_outside_repo() {
 }
 
 #[test]
+fn restore_overwrites_conflicting_local_changes() {
+    // Reproducer for the bug seen in the wild: a session-start snapshot
+    // captures `.gitignore` as it was; later, the user has uncommitted
+    // local edits to `.gitignore`. Restore must overwrite — that's exactly
+    // what the user is asking for.
+    let repo = TempRepo::new();
+    repo.write(".gitignore", "*.log\n");
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo.path())
+        .status()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-q", "-m", "add gitignore"])
+        .current_dir(repo.path())
+        .status()
+        .unwrap();
+    run_oops(repo.path(), &["snap", "-m", "before edits"]);
+
+    // User edits .gitignore (uncommitted, conflicting).
+    repo.write(".gitignore", "*.log\nbuild/\n");
+
+    let (json, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let id = serde_json::from_str::<serde_json::Value>(&json).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Whole-tree restore — must overwrite the local change, not refuse.
+    let (out, stderr, code) = run_oops(repo.path(), &["to", &id, "--force"]);
+    assert_eq!(
+        code, 0,
+        "restore should succeed even with local conflicts — out={out} stderr={stderr}"
+    );
+    assert_eq!(repo.read(".gitignore"), "*.log\n");
+}
+
+#[test]
+fn restore_deletes_files_added_after_snapshot() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "alpha\n");
+    run_oops(repo.path(), &["snap"]);
+    repo.write("b.txt", "added later\n");
+
+    let (json, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let id = serde_json::from_str::<serde_json::Value>(&json).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (_, _, code) = run_oops(repo.path(), &["to", &id, "--force"]);
+    assert_eq!(code, 0);
+    assert!(repo.exists("a.txt"));
+    assert!(
+        !repo.exists("b.txt"),
+        "files added after the snapshot should disappear on whole-tree restore"
+    );
+}
+
+#[test]
+fn confirm_errors_clearly_on_empty_piped_stdin() {
+    // Slash commands run the binary without a TTY and without piping
+    // anything — read_line returns 0 bytes. We should error with a
+    // helpful "pass --force" message, not silently abort.
+    use std::process::{Command, Stdio};
+    let repo = TempRepo::new();
+    run_oops(repo.path(), &["snap"]);
+    let (json, _, _) = run_oops(repo.path(), &["list", "--json"]);
+    let id = serde_json::from_str::<serde_json::Value>(&json).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let out = Command::new(helpers::bin_path())
+        .args(["to", &id])
+        .current_dir(repo.path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+    assert_ne!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--force"),
+        "stderr should mention --force, got: {stderr}"
+    );
+}
+
+#[test]
 fn outside_git_repo_snap_errors_clearly() {
     let dir = tempfile::tempdir().unwrap();
     let (_, stderr, code) = run_oops(dir.path(), &["snap"]);

@@ -83,10 +83,21 @@ allowed-tools: Bash(claude-oops *)
 
 !`claude-oops list`
 
-If the user supplied a snapshot id ($ARGUMENTS), run `claude-oops to $ARGUMENTS` and report what changed.
+If the user supplied a snapshot id ($ARGUMENTS):
 
-Otherwise, show the list above to the user and ask which snapshot they want
-to restore. Once they pick one, run `claude-oops to <id>` and confirm.
+1. First run `claude-oops show $ARGUMENTS` to see which files would change on restore.
+2. Summarize that list for the user (a few examples + total count) so they know
+   what's about to be overwritten.
+3. Ask the user to confirm the restore. Only after they say yes, run
+   `claude-oops to $ARGUMENTS --force` to actually restore.
+
+If no id was supplied:
+- Show the list above and ask which snapshot to restore.
+- Once they pick one, follow the same `show` → confirm → `to <id> --force` flow.
+
+Always pass `--force` on the actual `to` command — confirmation already happened
+in the conversation, and the slash command runs without a TTY (so the binary's
+own confirm prompt would just abort).
 "#;
 
 /// Load settings.json, defaulting to an empty object if missing.

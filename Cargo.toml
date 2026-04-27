@@ -1,6 +1,6 @@
 [package]
 name = "claude-oops"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 rust-version = "1.75"
 description = "Automatic safety net for Claude Code: snapshot before risky ops, restore in seconds."

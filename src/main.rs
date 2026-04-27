@@ -231,12 +231,24 @@ fn run() -> Result<()> {
     }
 }
 
-/// Y/n prompt. Returns true on yes.
+/// Y/n prompt. Returns true on yes. When stdin isn't a terminal *and* nothing
+/// is piped in, errors with a clear "pass --force" message — silently aborting
+/// is confusing when the command was invoked from a script or slash-command.
 fn confirm(msg: &str) -> Result<bool> {
-    print!("{} [y/N] ", msg);
-    std::io::stdout().flush().ok();
+    use std::io::IsTerminal;
+    let is_tty = std::io::stdin().is_terminal();
+    if is_tty {
+        print!("{} [y/N] ", msg);
+        std::io::stdout().flush().ok();
+    }
     let mut buf = String::new();
-    std::io::stdin().read_line(&mut buf)?;
+    let n = std::io::stdin().read_line(&mut buf)?;
+    if n == 0 && !is_tty {
+        return Err(anyhow::anyhow!(
+            "no input on stdin — pass --force (or `-f`) to skip the confirmation \
+             when running non-interactively"
+        ));
+    }
     let answer = buf.trim().to_ascii_lowercase();
     Ok(matches!(answer.as_str(), "y" | "yes"))
 }

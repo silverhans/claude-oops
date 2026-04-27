@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.3.4
+
+Three real bugs found by the first user trying `/oops` on a real project:
+
+- **Restore now actually overwrites conflicting local changes.** Previously
+  `claude-oops to <id>` used `git read-tree -m -u`, which is merge-aware
+  and refuses to clobber uncommitted local edits — but that's exactly what
+  the user just confirmed they want to do. Now we use a private temp
+  index + `checkout-index -a -f`, which force-overwrites. Per-file restore
+  was already doing this correctly; whole-tree restore now matches.
+- **Whole-tree restore deletes working-tree files that aren't in the
+  snapshot** (tracked + untracked, respecting `.gitignore`), so the working
+  tree ends up matching the snapshot exactly. Previously these files
+  were left stranded.
+- **`confirm()` errors clearly when stdin is empty + non-TTY**, instead of
+  silently aborting. Slash commands invoke the binary without a TTY,
+  and the silent abort masqueraded as "user declined". Now: clear
+  "pass --force" message.
+- **`/oops` slash command now runs `claude-oops show <id>` first** to
+  preview the change, asks the user in chat, then runs `to <id> --force`.
+  No more confusing double-confirm flow where Claude tries `yes |` because
+  the binary kept aborting.
+
 ## v0.3.3
 
 - `claude-oops list` and `status` no longer fail when run outside a git

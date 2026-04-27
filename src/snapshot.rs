@@ -254,34 +254,64 @@ pub struct RestorePathReport {
 
 /// Restore the working tree to the snapshot's tree.
 ///
-/// Strategy: `git read-tree -m -u <tree>` updates the index and working tree
-/// to match the snapshot's tree, then `git checkout-index -a -f` makes the
-/// working tree exactly match. HEAD is *not* moved; commit history is
-/// untouched. Local file changes that conflict with the snapshot will be
-/// overwritten — callers should confirm before invoking this.
+/// Strategy: build a private index from the snapshot tree and
+/// `checkout-index -a -f` from it. This force-overwrites conflicting
+/// local changes — which is exactly what the caller asked for.
+/// We deliberately don't use `read-tree -m -u` (merge-aware), because
+/// that refuses to clobber uncommitted local changes, and the whole
+/// point of restore is to do exactly that. The user already confirmed
+/// (or passed `--force`) by the time we get here.
+///
+/// HEAD is not moved; commit history is untouched. The user's real
+/// `.git/index` is also untouched — we operate via a temp index — so
+/// after restore, `git status` correctly reflects the diff between
+/// HEAD and the new working tree.
+///
+/// Files in the working tree that aren't in the snapshot (and aren't
+/// gitignored) are deleted, so the working tree ends up matching the
+/// snapshot exactly.
 pub fn restore(repo: &GitRepo, rec: &SnapshotRecord) -> Result<()> {
-    // Use the tree directly so this works whether the snapshot points at a
-    // stash commit or at HEAD.
-    let tree = &rec.tree_sha;
+    let tmp_dir = repo.git_dir()?.join("claude-oops");
+    std::fs::create_dir_all(&tmp_dir)
+        .with_context(|| format!("failed to create {}", tmp_dir.display()))?;
+    let tmp_index = tmp_dir.join("restore-index");
+    let _ = std::fs::remove_file(&tmp_index);
 
     let status = repo
         .git()
-        .args(["read-tree", "-m", "-u", tree])
+        .env("GIT_INDEX_FILE", &tmp_index)
+        .args(["read-tree", &rec.tree_sha])
         .status()
-        .context("git read-tree failed to run")?;
+        .context("read-tree (restore) failed to run")?;
     if !status.success() {
-        return Err(anyhow!(
-            "git read-tree failed — working tree may have conflicting local changes"
-        ));
+        return Err(anyhow!("git read-tree {} failed", rec.tree_sha));
     }
+
     let status = repo
         .git()
+        .env("GIT_INDEX_FILE", &tmp_index)
         .args(["checkout-index", "-a", "-f"])
         .status()
-        .context("git checkout-index failed to run")?;
+        .context("checkout-index (restore) failed to run")?;
     if !status.success() {
         return Err(anyhow!("git checkout-index failed"));
     }
+
+    // Delete files in the working tree that aren't in the snapshot.
+    use std::collections::HashSet;
+    let snap_set: HashSet<String> = repo
+        .list_tree_paths(&rec.tree_sha, &[])?
+        .into_iter()
+        .collect();
+    let working = repo.list_working_paths(&[])?;
+    for w in working {
+        if !snap_set.contains(&w) {
+            let abs = repo.root().join(&w);
+            let _ = std::fs::remove_file(&abs);
+        }
+    }
+
+    let _ = std::fs::remove_file(&tmp_index);
     Ok(())
 }
 
